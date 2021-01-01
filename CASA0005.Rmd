@@ -1,0 +1,480 @@
+---
+title: "Analysis of the Supply-Demand Ratio of Medical Resources: A Case Study of Shenzhen"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages
+library(httr)
+library(jsonlite)
+library(tidyverse)
+library(tmap)
+library(tmaptools)
+library(sf)
+library(devtools)
+library(ggplot2)
+library(readxl)
+library(RColorBrewer)
+library(spatstat)
+library(maptools)
+library(grid)
+```
+
+```{r}
+#coordinate transformation package geoChina developed by Jun Cai
+#https://github.com/qlycool/geoChina
+#devtools::install_github("qlycool/geoChina")
+
+library(geoChina)
+```
+
+```{r}
+# most of data are produced as Chinese
+Sys.setlocale(category = "LC_ALL", locale = "Chinese")
+
+```
+
+```{r}
+# load Shenzhen boundary (sub_district level - level-4)
+SZ_dist <- st_read('data/SZ_SubD.shp') %>%
+  st_transform(., 4326)
+
+# visualization
+tm_shape(SZ_dist) +
+  tm_polygons(col = '#FFD452', alpha = 0.5) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_layout(title = 'Scope of Shenzhen', title.position = c('center', 'top'))
+```
+
+```{r}
+# load hospital data(xlsx)
+SZ_mi_xlsx <- read_excel('data/SZ_medical_institutes.xlsx',1)
+
+# inspect
+head(SZ_mi_xlsx)
+```
+
+```{r}
+# call Amap API to get the lon and lat of hospitals according to Address
+# before call the API, user should apply the specific key
+url_head <- 'https://restapi.amap.com/v3/place/text?key='
+key <- '9d54cba810238aab50fc4930af6e75a4'
+keywords_link <- '&keywords='
+
+# city=440300 - code of Shenzhen
+url_end <- '&city=440300&children=1&offset=1&page=1&extensions=base'
+
+# call API for each MI
+# transform the coordinate to WGS84
+for(mi in 1:nrow(SZ_mi_xlsx)){
+  # use hospital_name as keywords
+  keywords <- SZ_mi_xlsx$Address[mi]
+  
+  # call API
+  url_full <- paste0(url_head, key, keywords_link, keywords, url_end)
+  poi <- GET(url_full) %>%
+    content(as='text', encoding = 'UTF-8') %>%
+    fromJSON(flatten = FALSE)
+  
+  # obtain coordinates of hospital
+  poi_loc_lon <- as.numeric(unlist(strsplit(poi$pois$location, split = ","))[1])
+  poi_loc_lat <- as.numeric(unlist(strsplit(poi$pois$location, split = ","))[2])
+  
+  SZ_mi_xlsx$lon_gcj[mi] <- poi_loc_lon
+  SZ_mi_xlsx$lat_gcj[mi] <- poi_loc_lat
+  
+  # transform the coordinates to WGS84
+  poi_wgs <- gcj2wgs(poi_loc_lat, poi_loc_lon)
+  
+  # store in SZ_mi_xlsx
+  SZ_mi_xlsx$lon_wgs[mi] <- poi_wgs$lng
+  SZ_mi_xlsx$lat_wgs[mi] <- poi_wgs$lat
+}
+```
+
+```{r}
+# make SZ_mi_xslx into spatial data
+SZ_mi_sf <- st_as_sf(SZ_mi_xlsx,
+                        coords = c('lon_wgs', 'lat_wgs'),
+                        crs = 4326)
+
+# visualization of medical institutions
+tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'red',alpha = 0.1) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_shape(SZ_mi_sf) +
+  tm_dots(col = 'Type', size = 0.1) +
+  tm_layout(title = 'Distribution of Medical Institutions',
+            title.position = c('center', 'top'),
+            legend.position = c('right', 'top'))
+```
+
+```{r}
+# load Shenzhen communities data(xlsx)
+SZ_com <- read_excel('data/SZ_communities.xlsx', 1)
+
+# inspect
+head(SZ_com)
+```
+
+```{r}
+# call Amap API to get the lon and lat of hospitals according to Address
+# before call the API, user should apply the specific key
+url_head <- 'https://restapi.amap.com/v3/place/text?key='
+key <- '9d54cba810238aab50fc4930af6e75a4'
+keywords_link <- '&keywords='
+# city=440300 - code of Shenzhen
+url_end <- '&city=440300&children=1&offset=1&page=1&extensions=base'
+
+# call API for each community
+for(cm in 1:nrow(SZ_com)){
+  # use hospital_name as keywords
+  keywords <- paste0(SZ_com$Location_level_3[cm], SZ_com$Name[cm])
+  
+  # call API
+  url_full <- paste0(url_head, key, keywords_link, keywords, url_end)
+  poi <- GET(url_full) %>%
+    content(as='text', encoding = 'UTF-8') %>%
+    fromJSON(flatten = FALSE)
+  
+  # obtain coordinates of hospital
+  poi_loc_lon <- as.numeric(unlist(strsplit(poi$pois$location, split = ","))[1])
+  poi_loc_lat <- as.numeric(unlist(strsplit(poi$pois$location, split = ","))[2])
+  
+  SZ_com$lon_gcj[cm] <- poi_loc_lon
+  SZ_com$lat_gcj[cm] <- poi_loc_lat
+  
+  # transform the coordinates to WGS84
+  poi_wgs <- gcj2wgs(poi_loc_lat, poi_loc_lon)
+  
+  # store in SZ_mi_xlsx
+  SZ_com$lon_wgs[cm] <- poi_wgs$lng
+  SZ_com$lat_wgs[cm] <- poi_wgs$lat
+}
+```
+
+```{r}
+# make SZ_com into spatial data
+SZ_com_sf <- st_as_sf(SZ_com,
+                        coords = c('lon_wgs', 'lat_wgs'),
+                        crs = 4326)
+
+# visualization for communities
+tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'red',alpha = 0.2) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_shape(SZ_com_sf) +
+  tm_dots() +
+  tm_layout(title = 'Distribution of Communities',
+            title.position = c('center', 'top'))
+```
+
+```{r}
+# load Shenzhen population by sub-district data(xlsx)
+SZ_pop <- read_excel('data/SZ_2010_pop_age.xlsx', 1) %>%
+  # calculate total population
+  mutate(population = age_0_14 + age_15_64 + age_above_65)
+
+# inspect
+head(SZ_pop)
+```
+
+```{r}
+# join SZ_dist and SZ_pop
+SZ_dist_pop <- SZ_dist %>%
+  merge(.,
+        SZ_pop,
+        by.x = 'Name',
+        by.y = 'Sub_District_CHN')
+```
+
+```{r}
+# KDE of SZ_mi_sf
+# ensure all the points are within SZ_dist
+SZ_mi_sf <- SZ_mi_sf[SZ_dist,]
+
+# transform coordinate
+SZ_dist_proj <- st_transform(SZ_dist, 2435)
+SZ_mi_sf_proj <- st_transform(SZ_mi_sf, 2435)
+
+SZ_sp <- as(SZ_dist_proj, 'Spatial')
+window <- as.owin.SpatialPolygons(SZ_sp)
+
+SZ_mi_points_coords <- matrix(unlist(SZ_mi_sf_proj$geometry),
+                                 ncol = 2,
+                                 byrow = T)
+SZ_mi_sf_ppp <- ppp(x = SZ_mi_points_coords[,1],
+                    y = SZ_mi_points_coords[,2],
+                    window = window,
+                    check = T)
+
+# calculate bandwidth
+band_width_diggle <- bw.diggle(SZ_mi_sf_ppp)
+band_width_ppl <- bw.ppl(SZ_mi_sf_ppp)
+
+# KDE analyze
+SZ_mi_KDE_diggle <- density.ppp(SZ_mi_sf_ppp, sigma = band_width_diggle[1])
+SZ_mi_KDE_ppl <- density.ppp(SZ_mi_sf_ppp, sigma = band_width_ppl[1])
+
+# visualization
+plot(SZ_mi_KDE_diggle, main = 'KDE result, bandwidth = 1219 (Cross Validation)')
+plot(SZ_mi_KDE_ppl, main = 'KDE result, bandwidth = 1413 (Likelihood Cross Validation)')
+```
+
+```{r}
+# calculate the area of each sub-district
+SZ_dist_pop$area <- st_area(SZ_dist_pop)
+SZ_dist_pop$area <- set_units(SZ_dist_pop$area, value = 'km^2')
+
+# calculate the population density
+SZ_dist_pop <- SZ_dist_pop %>%
+  mutate(.,
+         SZ_density = population / area)
+```
+
+```{r}
+# visualization for population and population density
+plot1 <- tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'population',
+              style = 'quantile',
+              n = 7,
+              palette = 'OrRd',
+              alpha = 0.6,
+              title = 'Population',
+              legend.hist = TRUE) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_layout(title = 'Population of Shenzhen',
+            title.position = c(0.02, 0.95),
+            legend.position = c(0.02, 0.03),
+            legend.outside = TRUE)
+
+plot2 <- tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'SZ_density',
+              style = 'quantile',
+              n = 7,
+              palette = 'OrRd',
+              alpha = 0.6,
+              title = 'Population density(/km^2)',
+              legend.hist = TRUE) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_layout(title = 'Population Density of Shenzhen',
+            title.position = c(0.02, 0.95),
+            legend.position = c(0.02, 0.03),
+            legend.outside = TRUE)
+
+grid.newpage()
+pushViewport(viewport(layout=grid.layout(2, 1)))
+print(plot1, vp=viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(plot2, vp=viewport(layout.pos.row = 2, layout.pos.col = 1))
+```
+
+```{r}
+# create buffer for each sub_district to calculate supply-demand ratio
+for(dis in 1:nrow(SZ_dist_pop)){
+  # extract single sub-district
+  dist <- SZ_dist_pop$Name[dis]
+  dist_info <- SZ_dist_pop %>%
+    filter(Name == dist)
+  
+  # transform the coordinate in order to make buffer
+  dist_info <- dist_info %>%
+    st_transform(., 2435)
+  
+  # make a 5000m buffer of single sub-district
+  dist_buffer <- st_buffer(dist_info, 3000)
+  
+  # transform to origin coordinate
+  dist_buffer <- dist_buffer %>%
+    st_transform(., 4326)
+  
+  # calculate the number of medical institutes and beds of current sub district
+  mi_in_buffer <- SZ_mi_sf[dist_buffer,]
+  SZ_dist_pop$medical_ins[dis] <- nrow(mi_in_buffer)
+  SZ_dist_pop$beds[dis] <- sum(mi_in_buffer$Beds)
+}
+
+# show example of buffer
+tm_shape(SZ_dist) +
+  tm_polygons(col = '#FFD452', alpha = 0.5) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_shape(dist_buffer) +
+  tm_polygons(alpha = 0.3) +
+  tm_shape(mi_in_buffer) +
+  tm_dots() +
+  tm_layout(title = 'Example of Buffer', title.position = c('center', 'top'))
+```
+
+```{r}
+# calculate the supply-demand ratio
+SZ_dist_pop <- SZ_dist_pop %>%
+  # calculate the SD ratio between beds and population
+  mutate(.,
+         SD_beds_po = (beds / population) * 1000) %>%
+  # calculate the SD ratio between mi and children
+  mutate(.,
+         SD_beds_children = (beds / age_0_14) * 1000) %>%
+  # calculate the SD ratio between mi and young people
+  mutate(.,
+         SD_beds_young = (beds / age_15_64) * 1000) %>%
+  # calculate the SD ratio between mi and old people
+  mutate(.,
+         SD_beds_old = (beds / age_above_65) * 1000)
+```
+
+```{r}
+# visualization for supply-demand ratio
+# total population
+tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'SD_beds_po',
+              style = 'quantile',
+              n = 7,
+              palette = 'YlGn',
+              alpha = 0.6,
+              title = 'Beds/1000 people',
+              legend.hist = TRUE) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_layout(title = 'Medical Beds per 1000 people
+of Shenzhen (Total)',
+            title.position = c(0.02, 0.9),
+            legend.position = c(0.02, 0.05),
+            legend.outside = TRUE)
+
+# 0-14 age group
+plot1 <- tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'SD_beds_children',
+              style = 'quantile',
+              n = 7,
+              palette = 'YlGn',
+              alpha = 0.6,
+              title = 'Beds/1000 people') +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 0.7, space = 0.1) + 
+  tm_ylab("Latitude(°)", size = 0.7, space = 0.1) +
+  tm_layout(title = 'Medical Beds per 1000 people of Shenzhen (0-14)',
+            title.position = c(0.02, 0.95),
+            legend.position = c(0.02, 0.05),
+            legend.outside = TRUE)
+
+# 15-64 age group
+plot2 <- tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'SD_beds_young',
+              style = 'quantile',
+              n = 7,
+              palette = 'YlGn',
+              alpha = 0.6,
+              title = 'Beds/1000 people') +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 0.7, space = 0.1) + 
+  tm_ylab("Latitude(°)", size = 0.7, space = 0.1) +
+  tm_layout(title = 'Medical Beds per 1000 people of Shenzhen (15-64)',
+            title.position = c(0.02, 0.95),
+            legend.position = c(0.02, 0.05),
+            legend.outside = TRUE)
+
+# 65+ age group
+plot3 <- tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'SD_beds_old',
+              style = 'quantile',
+              n = 7,
+              palette = 'YlGn',
+              alpha = 0.6,
+              title = 'Beds/1000 people') +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 0.7, space = 0.1) + 
+  tm_ylab("Latitude(°)", size = 0.7, space = 0.1) +
+  tm_layout(title = 'Medical Beds per 1000 people of Shenzhen (65+)',
+            title.position = c(0.02, 0.95),
+            legend.position = c(0.02, 0.05),
+            legend.outside = TRUE)
+
+grid.newpage()
+pushViewport(viewport(layout=grid.layout(3, 1)))
+print(plot1, vp=viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(plot2, vp=viewport(layout.pos.row = 2, layout.pos.col = 1))
+print(plot3, vp=viewport(layout.pos.row = 3, layout.pos.col = 1))
+
+```
+
+```{r}
+# calculate average travel time from each community to the 5 closest hospitals by car
+# the limitation of calling is 30000/day
+url_head <- 'https://restapi.amap.com/v3/direction/driving?origin='
+od_link <- '&destination='
+# city=440300 - code of Shenzhen
+url_end <- '&extensions=base&key=9d54cba810238aab50fc4930af6e75a4'
+
+hos_time <- SZ_mi_xlsx %>%
+  filter(Type == 'Hospital') %>%
+  select(Name, Type, lon_gcj, lat_gcj)
+
+# the limitation of calling is 30000/day
+for(cm in 1:nrow(SZ_com)){
+  # use hospital_name as keywords
+  origin <- paste0(SZ_com$lon_gcj[cm], ',', SZ_com$lat_gcj[cm])
+  
+  for(hos in 1:nrow(hos_time)){
+    destination <- paste0(hos_time$lon_gcj[hos], ',', hos_time$lat_gcj[hos])
+    
+    url_full <- paste0(url_head, origin, od_link, destination, url_end)
+    travel_path <- GET(url_full) %>%
+    content(as='text', encoding = 'UTF-8') %>%
+    fromJSON(flatten = FALSE)
+    
+    hos_time$time[hos] <- as.numeric(travel_path$route$paths$duration) / 60
+    }
+  time_sort <- sort(hos_time$time)
+  time_avg <- sum(time_sort[1:5]) / 5
+  
+  SZ_com$avg_time[cm] <- time_avg
+}
+
+# save as csv
+write.csv(SZ_com, 'data/SZ_com_time.csv')
+```
+
+```{r}
+# calculate the average travel time of eact sub-district
+for(dis in 1:nrow(SZ_dist_pop)){
+  # Extract single sub-district
+  dist <- SZ_dist_pop$Name[dis]
+  dist_info <- SZ_dist_pop %>%
+    filter(Name == dist)
+  # calculate the number of medical institutes and beds of current sub district
+  SZ_dist_com <- SZ_com_sf[dist_info,]
+  SZ_dist_pop$time[dis] <- sum(SZ_dist_com$avg_time) / nrow(SZ_dist_com)
+}
+
+# visualization
+tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'time',
+              style = 'quantile',
+              n = 5,
+              palette = 'OrRd',
+              alpha = 0.6,
+              title = 'travel time(mins)',
+              legend.hist = TRUE) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_layout(title = 'Average Travel Time
+for Each Sub-District',
+            title.position = c(0.02, 0.9),
+            legend.position = c(0.02, 0.1),
+            legend.outside = TRUE)
+```
