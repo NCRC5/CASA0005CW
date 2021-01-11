@@ -62,6 +62,7 @@ head(SZ_mi_xlsx)
 ```
 
 ```{r}
+# for reproduce, load data/SZ_medi_posi.csv
 # call Amap API to get the lon and lat of hospitals according to Address
 # before call the API, user should apply the specific key
 url_head <- 'https://restapi.amap.com/v3/place/text?key='
@@ -97,10 +98,13 @@ for(mi in 1:nrow(SZ_mi_xlsx)){
   SZ_mi_xlsx$lon_wgs[mi] <- poi_wgs$lng
   SZ_mi_xlsx$lat_wgs[mi] <- poi_wgs$lat
 }
+
+write.csv(SZ_mi_xlsx, 'data/SZ_medi_posi.csv')
 ```
 
 ```{r}
 # make SZ_mi_xslx into spatial data
+SZ_mi_xlsx <- read.csv(data/SZ_medi_posi.csv)
 SZ_mi_sf <- st_as_sf(SZ_mi_xlsx,
                         coords = c('lon_wgs', 'lat_wgs'),
                         crs = 4326)
@@ -127,6 +131,7 @@ head(SZ_com)
 ```
 
 ```{r}
+# for reproduce, load data/SZ_com_time.csv
 # call Amap API to get the lon and lat of hospitals according to Address
 # before call the API, user should apply the specific key
 url_head <- 'https://restapi.amap.com/v3/place/text?key='
@@ -160,24 +165,6 @@ for(cm in 1:nrow(SZ_com)){
   SZ_com$lon_wgs[cm] <- poi_wgs$lng
   SZ_com$lat_wgs[cm] <- poi_wgs$lat
 }
-```
-
-```{r}
-# make SZ_com into spatial data
-SZ_com_sf <- st_as_sf(SZ_com,
-                        coords = c('lon_wgs', 'lat_wgs'),
-                        crs = 4326)
-
-# visualization for communities
-tm_shape(SZ_dist_pop) +
-  tm_polygons(col = 'red',alpha = 0.2) +
-  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
-  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
-  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
-  tm_shape(SZ_com_sf) +
-  tm_dots() +
-  tm_layout(title = 'Distribution of Communities',
-            title.position = c('center', 'top'))
 ```
 
 ```{r}
@@ -413,6 +400,7 @@ print(plot3, vp=viewport(layout.pos.row = 3, layout.pos.col = 1))
 ```
 
 ```{r}
+# for reproduce, load data/SZ_com_time.csv in next chunk
 # calculate average travel time from each community to the 5 closest hospitals by car
 # the limitation of calling is 30000/day
 url_head <- 'https://restapi.amap.com/v3/direction/driving?origin='
@@ -447,6 +435,26 @@ for(cm in 1:nrow(SZ_com)){
 
 # save as csv
 write.csv(SZ_com, 'data/SZ_com_time.csv')
+```
+
+```{r}
+# make SZ_com into spatial data
+SZ_com <- read.csv('data/SZ_com_time.csv')
+
+SZ_com_sf <- st_as_sf(SZ_com,
+                        coords = c('lon_wgs', 'lat_wgs'),
+                        crs = 4326)
+
+# visualization for communities
+tm_shape(SZ_dist_pop) +
+  tm_polygons(col = 'red',alpha = 0.2) +
+  tm_grid(col = '#989898', alpha = 0.3, labels.rot = c(0, 90)) +
+  tm_xlab("Longitude(°)", size = 1, space = 0.3) + 
+  tm_ylab("Latitude(°)", size = 1, space = 0.3) +
+  tm_shape(SZ_com_sf) +
+  tm_dots() +
+  tm_layout(title = 'Distribution of Communities',
+            title.position = c('center', 'top'))
 ```
 
 ```{r}
