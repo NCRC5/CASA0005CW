@@ -65,7 +65,7 @@ head(SZ_mi_xlsx)
 # call Amap API to get the lon and lat of hospitals according to Address
 # before call the API, user should apply the specific key
 url_head <- 'https://restapi.amap.com/v3/place/text?key='
-key <- '9d54cba810238aab50fc4930af6e75a4'
+key <- '#your key#' # everyone can apply a private key, here I hide my key
 keywords_link <- '&keywords='
 
 # city=440300 - code of Shenzhen
@@ -130,7 +130,7 @@ head(SZ_com)
 # call Amap API to get the lon and lat of hospitals according to Address
 # before call the API, user should apply the specific key
 url_head <- 'https://restapi.amap.com/v3/place/text?key='
-key <- '9d54cba810238aab50fc4930af6e75a4'
+key <- '#your key#'
 keywords_link <- '&keywords='
 # city=440300 - code of Shenzhen
 url_end <- '&city=440300&children=1&offset=1&page=1&extensions=base'
@@ -418,7 +418,7 @@ print(plot3, vp=viewport(layout.pos.row = 3, layout.pos.col = 1))
 url_head <- 'https://restapi.amap.com/v3/direction/driving?origin='
 od_link <- '&destination='
 # city=440300 - code of Shenzhen
-url_end <- '&extensions=base&key=9d54cba810238aab50fc4930af6e75a4'
+url_end <- '&extensions=base&key=#your key#'
 
 hos_time <- SZ_mi_xlsx %>%
   filter(Type == 'Hospital') %>%
