@@ -104,7 +104,7 @@ write.csv(SZ_mi_xlsx, 'data/SZ_medi_posi.csv')
 
 ```{r}
 # make SZ_mi_xslx into spatial data
-SZ_mi_xlsx <- read.csv(data/SZ_medi_posi.csv)
+SZ_mi_xlsx <- read.csv('data/SZ_medi_posi.csv')
 SZ_mi_sf <- st_as_sf(SZ_mi_xlsx,
                         coords = c('lon_wgs', 'lat_wgs'),
                         crs = 4326)
